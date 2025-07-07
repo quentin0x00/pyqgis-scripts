@@ -1,6 +1,16 @@
-# PyQgis Scripts
+# 🐍 PyQGIS Scripts
 
 Une collection de scripts Python/QGIS utilitaires pour automatiser et faciliter la gestion de projets dans QGIS.
+
+---
+
+## ⚙️ Exécution
+
+Pour exécuter un script :
+
+1. Ouvrir QGIS.
+2. Appuyer sur `Ctrl + Alt + P` pour ouvrir la **console Python**.
+3. Copier-coller et executer le script souhaité dans la console.
 
 ---
 
