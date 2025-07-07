@@ -1,0 +1,20 @@
+from qgis.core import QgsProject, QgsVectorLayer, QgsMapLayer
+
+project = QgsProject.instance()
+
+for layer in project.mapLayers().values():
+    if isinstance(layer, QgsVectorLayer):
+        if layer.dataProvider().name() == 'postgres':
+            error_message = layer.saveStyleToDatabase(
+                'default',                    
+                '',                            
+                True,                         
+                '',                           
+                QgsMapLayer.AllStyleCategories
+            )
+            if error_message == '':
+                print(f"✅ Style enregistré pour : {layer.name()}")
+            else:
+                print(f"❌ Échec pour : {layer.name()} - {error_message}")
+        else:
+            print(f"⏭ Ignoré (non-PostgreSQL) : {layer.name()}")
