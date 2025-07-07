@@ -1,0 +1,96 @@
+from qgis.core import QgsProject, QgsLayerTreeGroup, QgsLayerTreeLayer
+from qgis.PyQt.QtWidgets import QFileDialog
+import csv
+
+# main
+def main():
+    chemin_sortie = demander_chemin_output()
+    if not chemin_sortie:
+        print("❌ Opération annulée.")
+        return
+
+    projet = QgsProject.instance()
+    racine = projet.layerTreeRoot()
+    arborescence = parcourir_arbre(racine)
+    infos = extraire_infos_couches(arborescence)
+    exporter_vers_csv(infos, chemin_sortie)
+    print(f"✅ Export terminé vers : {chemin_sortie}")
+
+# utils
+def demander_chemin_output():
+    chemin, _ = QFileDialog.getSaveFileName(None, "Enregistrer le fichier CSV", "", "Fichiers CSV (*.csv)")
+    return chemin
+
+def parcourir_arbre(racine):
+    resultats = []
+
+    def _parcourir(groupe, chemin=''):
+        for enfant in groupe.children():
+            if isinstance(enfant, QgsLayerTreeLayer):
+                couche = enfant.layer()
+                resultats.append((couche, chemin))
+            elif isinstance(enfant, QgsLayerTreeGroup):
+                nom_groupe = enfant.name()
+                chemin_complet = f"{chemin}/{nom_groupe}" if chemin else nom_groupe
+                _parcourir(enfant, chemin_complet)
+
+    _parcourir(racine)
+    return resultats
+
+def extraire_infos_couches(arborescence):
+    infos = []
+    type_donnees_map = {
+        0: "vecteur",
+        1: "raster",
+        2: "mesh"
+    }
+    geom_type_map = {
+        0: 'Point',
+        1: 'Ligne',
+        2: 'Polygone',
+        3: 'Inconnu'
+    }
+
+    for couche, groupe in arborescence:
+        crs = couche.crs().authid() if couche.crs() else "N/A"
+        fournisseur = couche.providerType() if hasattr(couche, 'providerType') else "N/A"
+        type_donnees = type_donnees_map.get(couche.type(), "inconnu")
+
+        try:
+            type_geom = geom_type_map.get(couche.geometryType(), 'N/A') if couche.type() == couche.VectorLayer else "N/A"
+        except:
+            type_geom = "N/A"
+
+        if couche.type() == couche.VectorLayer:
+            cle_indices = couche.primaryKeyAttributes()
+            if cle_indices:
+                champs = couche.fields()
+                noms_cles = [champs[i].name() for i in cle_indices]
+                cle_primaire = ",".join(noms_cles)
+            else:
+                cle_primaire = "N/A"
+        else:
+            cle_primaire = "N/A"
+
+        infos.append({
+            'nom': couche.name(),
+            'chemin': couche.source(),
+            'groupe': groupe,
+            'type_donnees': type_donnees,
+            'type_geom': type_geom,
+            'crs': crs,
+            'fournisseur': fournisseur,
+            'cle_primaire': cle_primaire,
+        })
+    return infos
+
+def exporter_vers_csv(donnees, chemin_csv):
+    champs = ['nom', 'chemin', 'groupe', 'type_donnees', 'type_geom', 'crs', 'fournisseur', 'cle_primaire']
+    with open(chemin_csv, 'w', newline='', encoding='utf-8') as fichier:
+        writer = csv.DictWriter(fichier, fieldnames=champs)
+        writer.writeheader()
+        for ligne in donnees:
+            writer.writerow(ligne)
+
+# call
+main()
