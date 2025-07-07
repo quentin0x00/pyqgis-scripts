@@ -1,0 +1,188 @@
+from PyQt5.QtWidgets import (
+    QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QFileDialog,
+    QComboBox, QTreeWidget, QTreeWidgetItem, QDialogButtonBox, QSizePolicy
+)
+from PyQt5.QtCore import Qt
+
+from qgis.core import (
+    QgsProject, QgsMapLayer, QgsCoordinateReferenceSystem, QgsVectorFileWriter,
+    QgsLayerTreeGroup, QgsLayerTreeLayer
+)
+from qgis.gui import QgsProjectionSelectionDialog
+
+import os
+
+class LayerSelectionDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Exporter des couches")
+        self.resize(500, 650)
+
+        self.selected_crs = QgsCoordinateReferenceSystem("EPSG:3857")
+        self.selected_output_folder = ""
+
+        layout = QVBoxLayout()
+
+        # Choix dossier
+        folder_layout = QHBoxLayout()
+        self.folder_label = QLabel("Dossier de sortie : ")
+        self.folder_button = QPushButton("Choisir…")
+        self.folder_button.clicked.connect(self.choose_folder)
+        folder_layout.addWidget(self.folder_label)
+        folder_layout.addWidget(self.folder_button)
+        layout.addLayout(folder_layout)
+
+        # Choix CRS via dialogue QGIS
+        crs_layout = QHBoxLayout()
+        crs_layout.addWidget(QLabel("CRS :"))
+
+        self.crs_label = QLabel(self.selected_crs.authid())
+        self.crs_button = QPushButton("Choisir…")
+        self.crs_button.clicked.connect(self.choose_crs)
+        crs_layout.addWidget(self.crs_label)
+        crs_layout.addWidget(self.crs_button)
+        layout.addLayout(crs_layout)
+
+        # Format export
+        format_layout = QHBoxLayout()
+        format_layout.addWidget(QLabel("Format de sortie :"))
+        self.format_combo = QComboBox()
+        self.format_combo.addItems(["GPKG", "KML", "SHP", "GeoJSON", "CSV"])
+        format_layout.addWidget(self.format_combo)
+        layout.addLayout(format_layout)
+
+
+        self.crs_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.crs_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+
+        width = self.crs_button.sizeHint().width()
+        self.folder_button.setFixedWidth(width)
+        
+        # Tree widget pour groupes/couches
+        self.tree = QTreeWidget()
+        self.tree.setHeaderHidden(True)
+        layout.addWidget(self.tree)
+
+        # Boutons Exporter / Annuler
+        self.button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.button_box.button(QDialogButtonBox.Ok).setText("Exporter")
+        self.button_box.accepted.connect(self.accept)
+        self.button_box.rejected.connect(self.reject)
+        layout.addWidget(self.button_box)
+
+        self.setLayout(layout)
+
+        self.populate_tree()
+        
+
+    def choose_folder(self):
+        folder = QFileDialog.getExistingDirectory(self, "Choisir un dossier de sortie")
+        if folder:
+            self.selected_output_folder = folder
+            self.folder_label.setText(f"Dossier : {folder}")
+
+    def choose_crs(self):
+        dlg = QgsProjectionSelectionDialog(self)
+        dlg.setCrs(self.selected_crs)
+        if dlg.exec_():
+            selected_crs = dlg.crs()
+            if selected_crs.isValid():
+                self.selected_crs = selected_crs
+                self.crs_label.setText(self.selected_crs.authid())
+
+    def populate_tree(self):
+        root = QgsProject.instance().layerTreeRoot()
+        self.tree.clear()
+        self._add_nodes(root, self.tree.invisibleRootItem())
+        self.tree.expandAll()
+
+    def _add_nodes(self, node, tree_parent):
+        if isinstance(node, QgsLayerTreeGroup):
+            group_item = QTreeWidgetItem(tree_parent)
+            group_item.setText(0, node.name())
+            group_item.setFlags(group_item.flags() | 2)
+            group_item.setCheckState(0, 0)
+
+            # Propagation des cochages enfants <-> parent
+            def on_state_changed(state):
+                check = state == 2
+                for i in range(group_item.childCount()):
+                    group_item.child(i).setCheckState(0, 2 if check else 0)
+
+            group_item.treeWidget().itemChanged.connect(
+                lambda item, col: on_state_changed(item.checkState(col)) if item == group_item else None
+            )
+
+            for child in node.children():
+                self._add_nodes(child, group_item)
+
+        elif isinstance(node, QgsLayerTreeLayer):
+            layer = node.layer()
+            if layer.type() == QgsMapLayer.VectorLayer:
+                layer_item = QTreeWidgetItem(tree_parent)
+                layer_item.setText(0, layer.name())
+                layer_item.setFlags(layer_item.flags() | 2)
+                layer_item.setCheckState(0, 0)
+
+    def get_selected_layers(self):
+        layers = []
+        root = self.tree.invisibleRootItem()
+
+        def check_item(item):
+            for i in range(item.childCount()):
+                check_item(item.child(i))
+            if item.childCount() == 0 and item.checkState(0) == 2:
+                name = item.text(0)
+                layer = QgsProject.instance().mapLayersByName(name)
+                if layer:
+                    layers.append(layer[0])
+
+        for i in range(root.childCount()):
+            check_item(root.child(i))
+        return layers
+
+    def get_selected_epsg(self):
+        return self.crs_label.text()
+
+    def get_selected_format(self):
+        return self.format_combo.currentText()
+
+
+def export_layer_to_format(layer, output_path, crs, out_format):
+    error = QgsVectorFileWriter.writeAsVectorFormat(
+        layer,
+        output_path,
+        "utf-8",
+        crs,
+        out_format
+    )
+    if error[0] != QgsVectorFileWriter.NoError:
+        raise Exception(f"Erreur export {layer.name()} : {error[1]}")
+
+
+def export_selected_layers():
+    dialog = LayerSelectionDialog()
+    if dialog.exec_():
+        output_folder = dialog.selected_output_folder
+        if not output_folder:
+            print("Aucun dossier sélectionné.")
+            return
+
+        selected_epsg = dialog.get_selected_epsg()
+        crs = QgsCoordinateReferenceSystem(selected_epsg)
+        selected_format = dialog.get_selected_format()
+
+        for layer in dialog.get_selected_layers():
+            ext = selected_format.lower()
+            if ext not in ["shp", "gpkg", "kml", "geojson", "csv"]:
+                ext = "gpkg"
+
+            output_path = os.path.join(output_folder, f"{layer.name()}.{ext}")
+
+            try:
+                export_layer_to_format(layer, output_path, crs, selected_format)
+                print(f"{layer.name()} exportée vers {output_path}")
+            except Exception as e:
+                print(f"Erreur avec {layer.name()} : {e}")
+
+export_selected_layers()
