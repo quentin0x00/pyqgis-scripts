@@ -30,7 +30,7 @@ Une collection de scripts Python/QGIS utilitaires pour automatiser et faciliter 
 
 ## 🎨 save_qgis_layer_styles_to_db
 
-**Enregistrer toutes les symbologies des couches PostgreSQL directement dans la base de données source.**
+**Enregistrer toutes les symbologies, formulaires et paramètres des couches PostgreSQL directement dans la base de données source.**
 
 ![save_qgis_layer_styles_to_db](https://github.com/user-attachments/assets/acca2f98-3f7c-4d9e-9821-7973839d39c0)
 
