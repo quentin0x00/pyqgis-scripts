@@ -1,0 +1,35 @@
+from osgeo import ogr
+from qgis.core import QgsProject, QgsVectorLayer
+
+release = "2024-09-18"
+# themes = ["addresses", "base", "buildings", "divisions", "transportation"]
+themes = ["buildings"]
+
+for theme in themes:
+    print(f"Adding {theme} data...")
+
+    url = f"/vsicurl/https://overturemaps-tiles-us-west-2-beta.s3.amazonaws.com/{release}/{theme}.pmtiles"
+    datasource = ogr.Open(url)
+
+    if datasource is None:
+        print(f"Failed to open {theme} data.")
+        continue
+
+    layer_count = datasource.GetLayerCount()
+
+    for i in range(layer_count):
+        layer = datasource.GetLayerByIndex(i)
+        layer_name = layer.GetName()
+
+        vector_layer = QgsVectorLayer(
+            f"{url}|layername={layer_name}", f"{theme} - {layer_name}", "ogr"
+        )
+
+        if not vector_layer.isValid():
+            print(f"Layer {layer_name} is invalid.")
+            continue
+
+        QgsProject.instance().addMapLayer(vector_layer)
+        print(f"Added {layer_name} from {theme}.")
+
+print("Done!")
