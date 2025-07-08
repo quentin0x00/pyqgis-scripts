@@ -1,10 +1,6 @@
-# 🐍 PyQGIS Scripts
+# PyQGIS Scripts
 
 Une collection de scripts Python/QGIS utilitaires pour automatiser et faciliter la gestion de projets dans QGIS.
-
----
-
-## ⚙️ Exécution
 
 Pour exécuter un script :
 
